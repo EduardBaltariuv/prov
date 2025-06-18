@@ -1,0 +1,49 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "hospital_app2",
+            "cwd": "hospital_app2",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "hospital_app2 (profile mode)",
+            "cwd": "hospital_app2",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "hospital_app2 (release mode)",
+            "cwd": "hospital_app2",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "android",
+            "cwd": "hospital_app2\\android",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "android (profile mode)",
+            "cwd": "hospital_app2\\android",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "android (release mode)",
+            "cwd": "hospital_app2\\android",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}

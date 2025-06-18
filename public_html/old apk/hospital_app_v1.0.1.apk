@@ -1,0 +1,5 @@
+# Test APK File for OTA System
+# This is a placeholder file for testing the OTA download system
+# In production, this would be replaced with actual APK files
+
+echo "Test APK v1.0.1 - $(date)" > /tmp/test_content.txt

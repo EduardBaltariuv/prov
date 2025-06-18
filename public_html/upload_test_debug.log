@@ -1,0 +1,20 @@
+2025-06-11 11:51:58 - TEST UPLOAD DEBUG START
+2025-06-11 11:51:58 - REQUEST_METHOD: 
+2025-06-11 11:51:58 - POST Data: Array
+(
+)
+
+2025-06-11 11:51:58 - FILES Data: Array
+(
+)
+
+2025-06-11 11:51:58 - Content-Type: Not set
+2025-06-11 11:51:58 - upload_max_filesize: 2M
+2025-06-11 11:51:58 - post_max_size: 8M
+2025-06-11 11:51:58 - file_uploads: ON
+2025-06-11 11:51:58 - Local upload dir exists: /home/vboxuser/Downloads/AplicatieAndroidProvidenta-main2/public_html/uploads/
+2025-06-11 11:51:58 - Local upload dir writable: YES
+2025-06-11 11:51:58 - Current working directory: /home/vboxuser/Downloads/AplicatieAndroidProvidenta-main2/public_html
+2025-06-11 11:51:58 - Script file: /home/vboxuser/Downloads/AplicatieAndroidProvidenta-main2/public_html/test_upload.php
+2025-06-11 11:51:58 - TEST UPLOAD DEBUG END
+
