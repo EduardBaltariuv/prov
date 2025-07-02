@@ -104,26 +104,29 @@ class OTAUpdateService extends ChangeNotifier {
       final currentVersion = _currentVersion ?? await _getCurrentVersion();
       final packageInfo = await PackageInfo.fromPlatform();
       
-      final requestBody = {
-        'current_version': currentVersion,
-        'build_number': packageInfo.buildNumber,
+      // Use GET request with version parameter as expected by the PHP endpoint
+      final uri = Uri.parse(_versionCheckUrl).replace(queryParameters: {
+        'version': currentVersion,
         'platform': Platform.isAndroid ? 'android' : 'ios',
         'package_name': packageInfo.packageName,
-      };
+        'build_number': packageInfo.buildNumber,
+      });
       
-      final response = await http.post(
-        Uri.parse(_versionCheckUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http.get(uri).timeout(const Duration(seconds: 30));
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        if (data['update_available'] == true) {
-          _availableUpdate = data;
+        if (data['hasUpdate'] == true) {
+          // Map the PHP response format to what the rest of the code expects
+          _availableUpdate = {
+            'latest_version': data['availableVersion'],
+            'is_critical': data['isCritical'],
+            'release_notes': data['updateNotes'],
+            'download_url': data['downloadUrl'],
+          };
           _updateMessage = showMessage 
-              ? 'Update available: v${data['latest_version']}' 
+              ? 'Update available: v${data['availableVersion']}' 
               : null;
           await _savePreferences();
           
@@ -171,20 +174,15 @@ class OTAUpdateService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      // Get the download URL from the available update info
-      final downloadUrl = _availableUpdate!['download_url'] ?? _downloadBaseUrl;
+      // Use the ota_download.php endpoint instead of direct APK links
+      final baseDownloadUrl = _downloadBaseUrl;
       
-      // Create request with update info
-      final requestBody = {
+      // Create download URL with version parameter for the ota_download.php endpoint
+      final downloadUri = Uri.parse(baseDownloadUrl).replace(queryParameters: {
         'version': _availableUpdate!['latest_version'],
-        'platform': Platform.isAndroid ? 'android' : 'ios',
-      };
+      });
       
-      final request = http.Request('POST', Uri.parse(downloadUrl));
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(requestBody);
-      
-      final response = await request.send();
+      final response = await http.Client().send(http.Request('GET', downloadUri));
       
       if (response.statusCode == 200) {
         final contentLength = response.contentLength ?? 0;
@@ -192,8 +190,14 @@ class OTAUpdateService extends ChangeNotifier {
         final fileName = 'hospital_app_update.apk';
         final file = File('${tempDir.path}/$fileName');
         
+        // Delete existing APK file if it exists
+        if (await file.exists()) {
+          await file.delete();
+        }
+        
         final sink = file.openWrite();
         var downloaded = 0;
+        bool downloadCompleted = false;
         
         await response.stream.listen(
           (chunk) {
@@ -206,18 +210,8 @@ class OTAUpdateService extends ChangeNotifier {
               notifyListeners();
             }
           },
-          onDone: () async {
-            await sink.close();
-            _downloadProgress = 1.0;
-            _updateMessage = 'Download complete. Installing...';
-            notifyListeners();
-            
-            // Install the APK (Android only)
-            if (Platform.isAndroid) {
-              await _installApk(file.path);
-            } else {
-              _updateMessage = 'Please manually install the downloaded update';
-            }
+          onDone: () {
+            downloadCompleted = true;
           },
           onError: (error) {
             _updateMessage = 'Download failed: $error';
@@ -225,7 +219,22 @@ class OTAUpdateService extends ChangeNotifier {
           },
         ).asFuture();
         
-        return true;
+        await sink.close();
+        
+        if (downloadCompleted) {
+          _downloadProgress = 1.0;
+          _updateMessage = 'Download complete. Installing...';
+          notifyListeners();
+          
+          // Install the APK (Android only)
+          if (Platform.isAndroid) {
+            await _installApk(file.path);
+          } else {
+            _updateMessage = 'Please manually install the downloaded update';
+          }
+        }
+        
+        return downloadCompleted;
       } else {
         throw Exception('Download failed with status ${response.statusCode}');
       }
@@ -243,13 +252,72 @@ class OTAUpdateService extends ChangeNotifier {
     if (!Platform.isAndroid) return;
     
     try {
+      // Verify the APK file exists and has content
+      final apkFile = File(filePath);
+      if (!await apkFile.exists()) {
+        _updateMessage = 'Installation failed: APK file not found';
+        notifyListeners();
+        return;
+      }
+      
+      final fileSize = await apkFile.length();
+      if (fileSize == 0) {
+        _updateMessage = 'Installation failed: APK file is empty';
+        notifyListeners();
+        return;
+      }
+      
+      // Check if the app can install from unknown sources
+      final canInstall = await _platform.invokeMethod('canInstallFromUnknownSources');
+      
+      if (!canInstall) {
+        _updateMessage = 'Installation requires permission. Opening settings...';
+        notifyListeners();
+        
+        // Open settings to allow user to enable installation from unknown sources
+        await _platform.invokeMethod('openInstallPermissionSettings');
+        
+        // Update message with instructions
+        _updateMessage = 'Please enable "Install from Unknown Sources" for this app, then try updating again.';
+        notifyListeners();
+        return;
+      }
+      
+      // Attempt to install the APK
       await _platform.invokeMethod('installApk', {'apkPath': filePath});
-      _updateMessage = 'Update installed successfully. Please restart the app.';
+      _updateMessage = 'Opening installer... Follow the prompts to complete the update.';
+      
+      // Schedule cleanup after installation attempt
+      _scheduleCleanup(filePath);
+      
     } catch (e) {
-      _updateMessage = 'Installation failed: ${e.toString()}';
       debugPrint('Error installing APK: $e');
+      
+      // Provide user-friendly error messages
+      if (e.toString().contains('INSTALL_ERROR')) {
+        _updateMessage = 'Installation failed. Please ensure you have enabled "Install from Unknown Sources" in your device settings.';
+      } else if (e.toString().contains('FILE_NOT_FOUND')) {
+        _updateMessage = 'Installation failed: Update file not found. Please try downloading again.';
+      } else {
+        _updateMessage = 'Installation failed. Please try again or install manually.';
+      }
     }
     notifyListeners();
+  }
+  
+  // Schedule cleanup of downloaded APK file
+  void _scheduleCleanup(String filePath) {
+    Future.delayed(const Duration(minutes: 5), () async {
+      try {
+        final file = File(filePath);
+        if (await file.exists()) {
+          await file.delete();
+          debugPrint('Cleaned up downloaded APK: $filePath');
+        }
+      } catch (e) {
+        debugPrint('Error cleaning up APK file: $e');
+      }
+    });
   }
 
   Future<void> performAutoUpdateCheck() async {
@@ -292,5 +360,75 @@ Version: $version
 Size: $size
 Release Notes: $releaseNotes
 ''';
+  }
+  
+  // Diagnostic method to check OTA readiness
+  Future<Map<String, dynamic>> checkOTAReadiness() async {
+    final results = <String, dynamic>{};
+    
+    try {
+      // Check internet connectivity by testing version check endpoint
+      final uri = Uri.parse(_versionCheckUrl).replace(queryParameters: {
+        'version': _currentVersion ?? '1.0.0',
+      });
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      results['internet_connectivity'] = response.statusCode == 200;
+      results['server_reachable'] = true;
+    } catch (e) {
+      results['internet_connectivity'] = false;
+      results['server_reachable'] = false;
+      results['connectivity_error'] = e.toString();
+    }
+    
+    try {
+      // Check available storage space
+      final tempDir = await getTemporaryDirectory();
+      final stat = await tempDir.stat();
+      results['temp_directory_accessible'] = true;
+    } catch (e) {
+      results['temp_directory_accessible'] = false;
+      results['storage_error'] = e.toString();
+    }
+    
+    try {
+      // Check Android permissions
+      if (Platform.isAndroid) {
+        final canInstall = await _platform.invokeMethod('canInstallFromUnknownSources');
+        results['install_permission'] = canInstall;
+      } else {
+        results['install_permission'] = false;
+        results['platform_note'] = 'OTA updates only supported on Android';
+      }
+    } catch (e) {
+      results['install_permission'] = false;
+      results['permission_error'] = e.toString();
+    }
+    
+    results['current_version'] = _currentVersion;
+    results['auto_update_enabled'] = _autoUpdateEnabled;
+    results['has_pending_update'] = hasUpdate;
+    
+    return results;
+  }
+  
+  // Method to clear any stuck download state
+  Future<void> resetDownloadState() async {
+    _isDownloading = false;
+    _downloadProgress = 0.0;
+    _updateMessage = null;
+    
+    // Clean up any existing APK files
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final apkFile = File('${tempDir.path}/hospital_app_update.apk');
+      if (await apkFile.exists()) {
+        await apkFile.delete();
+        debugPrint('Cleaned up existing APK file');
+      }
+    } catch (e) {
+      debugPrint('Error cleaning up APK file: $e');
+    }
+    
+    notifyListeners();
   }
 }

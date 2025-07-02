@@ -69,7 +69,8 @@ class NavigationViewModel extends ChangeNotifier {
       case 'Aparatura medicala':
         return {
           PageKey.reports: 0,
-          PageKey.profile: 1, // Removed notifications
+          PageKey.create: 1, // Added create page for technicians
+          PageKey.profile: 2, // Moved profile to index 2
         };
       default:
         return {};
@@ -99,6 +100,7 @@ class NavigationViewModel extends ChangeNotifier {
       case 'Aparatura medicala':
         return [
           ReportsListView(),
+          CreateReportView(), // Added CreateReportView for technicians
           ProfileView(),
         ];
       default:

@@ -78,14 +78,40 @@ class Report {
       return [];
     }
 
-    // Helper function to parse date time safely
+    // Helper function to parse date time safely for Romanian timezone
     DateTime parseDateTime(dynamic date) {
       try {
         if (date is String) {
-          return DateTime.parse(date);
+          // Parse the date string
+          DateTime parsedDate = DateTime.parse(date);
+          
+          // Check if the date string contains timezone information
+          bool hasTimezoneInfo = date.contains('T') && (date.contains('+') || date.contains('-') || date.endsWith('Z'));
+          
+          if (!hasTimezoneInfo) {
+            // The date from the server is in Romanian local time but without timezone info
+            // We need to interpret it as local device time, which should be correct
+            // since the server saves it in Romanian time and the device should display it as-is
+            
+            // Create a DateTime in the local timezone using the same values
+            return DateTime(
+              parsedDate.year,
+              parsedDate.month,
+              parsedDate.day,
+              parsedDate.hour,
+              parsedDate.minute,
+              parsedDate.second,
+              parsedDate.millisecond,
+              parsedDate.microsecond,
+            );
+          }
+          
+          // If it has timezone info, parse normally
+          return parsedDate.toLocal(); // Convert to device's local time
         }
         return DateTime.now();
       } catch (e) {
+        print('Error parsing date: $date, error: $e');
         return DateTime.now();
       }
     }

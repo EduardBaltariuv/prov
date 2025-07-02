@@ -183,25 +183,41 @@ class _ReportsListViewState extends State<ReportsListView> {
     }
 
     // Get the base list of reports based on user role and filter state
-    // Start with status-filtered reports from ReportViewModel
-    List<Report> baseReports = reportVM.filteredReports;
     List<Report> filteredReports;
     final userRole = Provider.of<AuthViewModel>(context, listen: false).getRole;
     
     if (userRole == 'reporter') {
-      // Reporter: only sees their own reports (with current status filter)
-      filteredReports = baseReports.where((report) => report.username == username).toList();
+      // Reporter: sees ALL their own reports regardless of status filter
+      // First get all reports, then filter by username, then apply status filter if needed
+      List<Report> userReports = reportVM.reports.where((report) => report.username == username).toList();
+      print('Reporter $username has ${userReports.length} total reports');
+      
+      // Apply status filtering to user's reports
+      if (reportVM.isNewSelected) {
+        filteredReports = userReports.where((r) => r.status == 'Nou').toList();
+        print('Filtered to ${filteredReports.length} Nou reports');
+      } else if (reportVM.isResolvedSelected) {
+        filteredReports = userReports.where((r) => r.status == 'Rezolvat').toList();
+        print('Filtered to ${filteredReports.length} Rezolvat reports');
+      } else if (reportVM.isInProgress) {
+        filteredReports = userReports.where((r) => r.status == 'În Progres').toList();
+        print('Filtered to ${filteredReports.length} În Progres reports');
+      } else {
+        // Default case - show all user reports
+        filteredReports = userReports;
+        print('Showing all ${filteredReports.length} user reports');
+      }
     } else if (userRole == 'admin') {
       // Admin: always sees all reports (with current status filter)
-      filteredReports = baseReports;
+      filteredReports = reportVM.filteredReports;
     } else {
       // Other roles: filter based on toggle button
       if (_showAllReports) {
         // Show all reports when filter is activated (with current status filter)
-        filteredReports = baseReports;
+        filteredReports = reportVM.filteredReports;
       } else {
         // Show only reports for their role when filter is not activated (with current status filter)
-        filteredReports = baseReports.where((report) => 
+        filteredReports = reportVM.filteredReports.where((report) => 
           report.category == userRole || report.username == username
         ).toList();
       }

@@ -4,7 +4,6 @@ import 'package:image_picker/image_picker.dart';
 import '../models/report.dart';
 import 'package:hospital_app/services/api_service.dart';
 import 'package:hospital_app/services/api_reportget.dart';
-import 'package:hospital_app/services/notification_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -57,13 +56,18 @@ class ReportViewModel extends ChangeNotifier {
   ];
   
   List<String> get locatii => const [
+    'Subsol',
     'Demisol', 
     'Parter', 
     'Etaj 1', 
     'Etaj 2',
     'Etaj 3',
     'Birouri',
-    'Laborator'
+    'Laborator',
+    'Curte exterioara',
+    'Cabina portar',
+    'Centru permanenta',
+    'Containere-vestiar'
   ];
 
   // Reset form fields
@@ -139,26 +143,45 @@ class ReportViewModel extends ChangeNotifier {
         images: images,
       );
 
-      // Instead of adding locally, refresh from server to get accurate data
-      await fetchReports();
-      
-      // Send notifications to admin and relevant technicians
-      await _sendNotificationToTopic(
-        category.toLowerCase(),
-        'Raport nou: $title',
-        'Un nou raport a fost creat în categoria $category'
-      );
-      
-      await _sendNotificationToTopic(
-        'admin',
-        'Raport nou: $title',
-        'Un nou raport a fost creat de $username'
-      );
+      // Check if the API response indicates success
+      if (response['success'] == true) {
+        print('✅ Report created successfully with ID: ${response['id']}');
+        
+        // Try to refresh reports from server, but don't fail if it errors
+        try {
+          await fetchReports();
+        } catch (e) {
+          print('⚠️ Warning: Failed to refresh reports after creation: $e');
+          // Don't fail the entire operation just because refresh failed
+        }
+        
+        // Send notifications (don't fail if notifications fail)
+        try {
+          await _sendNotificationToTopic(
+            category.toLowerCase(),
+            'Raport nou: $title',
+            'Un nou raport a fost creat în categoria $category'
+          );
+          
+          await _sendNotificationToTopic(
+            'admin',
+            'Raport nou: $title',
+            'Un nou raport a fost creat de $username'
+          );
+        } catch (e) {
+          print('⚠️ Warning: Failed to send notifications: $e');
+          // Don't fail the entire operation just because notifications failed
+        }
 
-      // Reset form selections
-      resetSelections();
-      
-      return Success(true);
+        // Reset form selections
+        resetSelections();
+        
+        return Success(true);
+      } else {
+        // API returned success=false
+        final message = response['message'] ?? 'Eroare necunoscută';
+        return Failure(message);
+      }
     } catch (e) {
       return Failure(e.toString());
     } finally {
@@ -276,6 +299,62 @@ class ReportViewModel extends ChangeNotifier {
       );
     } catch (e) {
       print('Failed to send notification: $e');
+    }
+  }
+
+  // Update existing report
+  Future<Result<String>> updateReport({
+    required String reportId,
+    required String title,
+    required String description,
+    required String category,
+    required String location,
+    List<XFile>? newImages,
+    required String username,
+    bool keepExistingImages = true,
+  }) async {
+    try {
+      print("🔄 Updating report $reportId...");
+      
+      final response = await ApiService.updateReport(
+        reportId: reportId,
+        title: title,
+        description: description,
+        category: category,
+        location: location,
+        newImages: newImages,
+        username: username,
+        keepExistingImages: keepExistingImages,
+      );
+
+      if (response['success'] == true) {
+        print("✅ Report updated successfully!");
+        
+        // Refresh the reports list to get the updated data
+        await fetchReports();
+        
+        return Success("Raportul a fost actualizat cu succes!");
+      } else {
+        final message = response['message'] ?? 'Unknown error occurred';
+        print("❌ Update failed: $message");
+        return Failure(message);
+      }
+    } catch (e) {
+      final errorMessage = e.toString();
+      print("❌ Exception during update: $errorMessage");
+      
+      // Handle specific error types
+      if (errorMessage.contains('USER_NOT_AUTHENTICATED')) {
+        return Failure('Sesiunea a expirat. Vă rugăm să vă reconectați.');
+      } else if (errorMessage.contains('PERMISSION_DENIED')) {
+        return Failure('Nu aveți permisiunea să modificați acest raport.');
+      } else if (errorMessage.contains('REPORT_NOT_FOUND')) {
+        return Failure('Raportul nu a fost găsit.');
+      } else if (errorMessage.contains('MISSING_FIELDS')) {
+        return Failure('Toate câmpurile sunt obligatorii.');
+      } else {
+        return Failure('Eroare la actualizarea raportului: $errorMessage');
+      }
     }
   }
 

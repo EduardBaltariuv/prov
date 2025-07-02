@@ -7,7 +7,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:hospital_app/viewmodels/auth_viewmodel.dart';
 import 'dart:io';
-import '../../theme/app_theme.dart';
 
 
 class CreateReportView extends StatefulWidget {
@@ -78,18 +77,30 @@ class _CreateReportViewState extends State<CreateReportView> {
   }
 
   String mapErrorToMessage(String error) {
-    if (error.contains('SocketException')) {
+    print('Mapping error: $error'); // Debug log
+    
+    if (error.contains('SocketException') || error.contains('No address associated with hostname')) {
       return 'Raportul nu a fost creat, verificati conexiunea la internet.';
     } else if (error.contains('USER_NOT_AUTHENTICATED') || error.contains('INVALID_USER')) {
       return 'Eroare: utilizatorul nu este autentificat. Va rugam sa va reconectati.';
-    } else if (error.contains('MISSING_FIELDS') || error.contains('400')) {
+    } else if (error.contains('MISSING_FIELDS') || error.contains('MISSING_REQUIRED_FIELDS') || error.contains('400')) {
       return 'Completati toate campurile obligatorii.';
-    } else if (error.contains('timeout')) {
-      return 'Incercati mai tarziu';
-    } else if (error.contains('SERVER_ERROR')) {
+    } else if (error.contains('timeout') || error.contains('TimeoutException')) {
+      return 'Cererea a expirat. Incercati mai tarziu.';
+    } else if (error.contains('SERVER_ERROR') || error.contains('500')) {
       return 'Eroare server. Incercati din nou.';
+    } else if (error.contains('REQUEST_TOO_LARGE') || error.contains('413')) {
+      return 'Imaginile sunt prea mari. Reduceti marimea imaginilor.';
+    } else if (error.contains('Failed to submit report')) {
+      // Extract the actual error from the nested exception
+      final match = RegExp(r'Failed to submit report: (.+)').firstMatch(error);
+      if (match != null) {
+        return mapErrorToMessage(match.group(1)!); // Recursively map the inner error
+      }
     }
-    return 'Ceva nu a mers bine.';
+    
+    // If no specific error pattern matches, show generic message
+    return 'A aparut o eroare. Incercati din nou.';
   }
 
   @override

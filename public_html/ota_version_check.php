@@ -12,10 +12,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Version information configuration
 $currentVersion = "1.0.0";
-$availableVersion = "1.0.1";
+$availableVersion = "1.0.3";
 $isCritical = false;
-$updateNotes = "• Improved performance and stability\n• Fixed minor bugs\n• Enhanced user interface\n• Added new features for better user experience";
-$downloadUrl = "https://darkcyan-clam-483701.hostingersite.com/apk_files/hospital_app_v1.0.1.apk";
+$updateNotes = "• Fixed timezone issues - all times now display in Romanian time\n• Removed error messages that appeared incorrectly\n• Fixed reporter visibility - you can now always see your own reports\n• All user roles can now create reports\n• Added new location options\n• Improved performance and stability";
+$downloadUrl = "https://darkcyan-clam-483701.hostingersite.com/ota_download.php";
 $minSupportedVersion = "1.0.0";
 
 try {

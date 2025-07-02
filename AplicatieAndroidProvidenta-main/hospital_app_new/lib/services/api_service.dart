@@ -108,4 +108,75 @@ static Future<Map<String, dynamic>?> login({
     return null;
   }
 }
+
+static Future<Map<String, dynamic>> updateReport({
+  required String reportId,
+  required String title,
+  required String description,
+  required String category,
+  required String location,
+  List<XFile>? newImages,
+  required String username,
+  bool keepExistingImages = true,
+}) async {
+  try {
+    var request = http.MultipartRequest('POST', Uri.parse(_baseUrl))
+      ..fields['action'] = 'updateReport'
+      ..fields['report_id'] = reportId
+      ..fields['title'] = title
+      ..fields['description'] = description
+      ..fields['category'] = category
+      ..fields['location'] = location
+      ..fields['username'] = username
+      ..fields['keep_existing_images'] = keepExistingImages.toString();
+
+    // Add new images if provided
+    if (newImages != null) {
+      for (var image in newImages) {
+        final bytes = await image.readAsBytes();
+        request.files.add(http.MultipartFile.fromBytes(
+          'images[]',
+          bytes,
+          filename: image.name,
+          contentType: MediaType.parse(lookupMimeType(image.name) ?? 'image/jpeg'),
+        )); 
+      }
+    }
+
+    print('Sending update request to ${_baseUrl} with fields: ${request.fields} and ${request.files.length} files');
+
+    final response = await request.send();
+    final responseData = await response.stream.bytesToString();
+    final data = jsonDecode(responseData);
+
+    print('Update response status: ${response.statusCode}');
+    print('Update response data: $responseData');
+
+    // Check for server-side errors first
+    if (data != null && data['success'] == false) {
+      final errorCode = data['error_code'] ?? '';
+      final message = data['message'] ?? 'Unknown error';
+      
+      if (errorCode == 'USER_NOT_AUTHENTICATED' || errorCode == 'INVALID_USER') {
+        throw Exception('USER_NOT_AUTHENTICATED: $message');
+      } else if (errorCode == 'PERMISSION_DENIED') {
+        throw Exception('PERMISSION_DENIED: $message');
+      } else if (errorCode == 'REPORT_NOT_FOUND') {
+        throw Exception('REPORT_NOT_FOUND: $message');
+      } else if (errorCode == 'MISSING_REQUIRED_FIELDS') {
+        throw Exception('MISSING_FIELDS: $message');
+      } else {
+        throw Exception('SERVER_ERROR: $message');
+      }
+    }
+
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception('HTTP_ERROR: ${response.statusCode}');
+    }
+  } catch (e) {
+    throw Exception('Failed to update report: ${e.toString()}');
+  }
+}
 }

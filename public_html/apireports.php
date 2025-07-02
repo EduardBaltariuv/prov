@@ -9,9 +9,13 @@ header('Content-Type: application/json; charset=utf-8');
 // Set timezone for consistent time handling
 date_default_timezone_set('Europe/Bucharest'); // Romania timezone
 
-// Error reporting
+// Disable HTML error output - this is crucial for clean JSON
+ini_set('display_errors', '0');
+ini_set('html_errors', '0');
 error_reporting(E_ALL);
-ini_set('display_errors', '1');
+
+// Start output buffering to catch any unexpected output
+ob_start();
 
 // Database configuration
 $host = "localhost";
@@ -20,89 +24,39 @@ $password = "Karlmarx12!";
 $database = "u842828699_common";
 $port = 3306;
 
-// Upload directory configuration - Support both live and local environments
+// Upload directory configuration
 $uploadBaseDir = '/home/u842828699/domains/darkcyan-clam-483701.hostingersite.com/public_html/';
-$localUploadBaseDir = '/home/vboxuser/Downloads/AplicatieAndroidProvidenta-main2/public_html/';
-
-// Use local directory for testing, live directory for production
-if (is_dir($uploadBaseDir)) {
-    $uploadDir = $uploadBaseDir . 'uploads/';
-} else {
-    $uploadDir = $localUploadBaseDir . 'uploads/';
-}
+$uploadDir = $uploadBaseDir . 'uploads/';
 
 try {
-    // Enhanced debug logging
-    $debugLog = '/home/vboxuser/Downloads/AplicatieAndroidProvidenta-main2/public_html/api_debug.log';
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD'] . "\n", FILE_APPEND);
-    
-    // Check for POST size issues (common cause of 400 errors)
-    $contentLength = $_SERVER['CONTENT_LENGTH'] ?? 0;
-    $postMaxSize = ini_get('post_max_size');
-    $uploadMaxFilesize = ini_get('upload_max_filesize');
-    
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - Content-Length: $contentLength bytes\n", FILE_APPEND);
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - post_max_size: $postMaxSize\n", FILE_APPEND);
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - upload_max_filesize: $uploadMaxFilesize\n", FILE_APPEND);
-    
-    // Convert sizes to bytes for comparison
-    function convertToBytes($size) {
-        $unit = strtoupper(substr($size, -1));
-        $value = (int)$size;
-        switch ($unit) {
-            case 'G': return $value * 1024 * 1024 * 1024;
-            case 'M': return $value * 1024 * 1024;
-            case 'K': return $value * 1024;
-            default: return $value;
-        }
-    }
-    
-    $postMaxBytes = convertToBytes($postMaxSize);
-    if ($contentLength > $postMaxBytes) {
-        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - ERROR: Content too large ($contentLength > $postMaxBytes)\n", FILE_APPEND);
-        http_response_code(413);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Request too large. Reduce image sizes.',
-            'error_code' => 'REQUEST_TOO_LARGE',
-            'details' => [
-                'content_length' => $contentLength,
-                'max_allowed' => $postMaxBytes
-            ]
-        ]);
-        exit;
-    }
-    
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - POST Data: " . print_r($_POST, true) . "\n", FILE_APPEND);
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - FILES Data: " . print_r($_FILES, true) . "\n", FILE_APPEND);
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - Upload Dir: " . $uploadDir . "\n", FILE_APPEND);
-    
     // Database connection
-    try {
-        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-        $conn = new mysqli($host, $username, $password, $database, $port);
-        $conn->set_charset("utf8mb4");
-    } catch (Exception $dbError) {
-        // For local testing, continue without database
-        error_log("Database connection failed (continuing in test mode): " . $dbError->getMessage());
-        $conn = null;
-    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    $conn = new mysqli($host, $username, $password, $database, $port);
+    $conn->set_charset("utf8mb4");
+    
+    // Set MySQL timezone to Romanian time
+    $conn->query("SET time_zone = '+03:00'"); // Romanian time (UTC+3 in summer, UTC+2 in winter)
 
     // Get action from POST
     $action = $_POST['action'] ?? '';
     error_log("Action received: $action");
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - Action received: $action\n", FILE_APPEND);
 
     switch ($action) {
         case 'createReport':
-        case 'create_report':
-            file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - Entering handleCreateReport function\n", FILE_APPEND);
             $response = handleCreateReport($conn, $uploadDir);
+            // Clean any unexpected output before sending JSON
+            ob_end_clean();
+            echo json_encode($response);
+            break;
+        case 'updateReport':
+            $response = handleUpdateReport($conn, $uploadDir);
+            // Clean any unexpected output before sending JSON
+            ob_end_clean();
             echo json_encode($response);
             break;
         default:
+            ob_end_clean();
             http_response_code(400);
-            file_put_contents($debugLog, date('Y-m-d H:i:s') . " - Enhanced Debug - Invalid action: $action\n", FILE_APPEND);
             echo json_encode([
                 'success' => false,
                 'message' => 'Invalid action',
@@ -113,6 +67,9 @@ try {
 } catch (Throwable $e) {
     error_log("Caught exception: " . $e->getMessage());
     error_log("Stack trace: " . $e->getTraceAsString());
+    
+    // Clean any unexpected output before sending JSON
+    ob_end_clean();
     
     http_response_code(500);
     echo json_encode([
@@ -126,21 +83,13 @@ try {
         ]
     ]);
 } finally {
-    if (isset($conn) && $conn) {
+    if (isset($conn)) {
         $conn->close();
     }
 }
 
-function handleCreateReport($conn, string $uploadDir): array {
+function handleCreateReport(mysqli $conn, string $uploadDir): array {
     try {
-        // ==== DEBUG LOGGING START ====
-        error_log("=== handleCreateReport DEBUG START ===");
-        error_log("POST Data: " . print_r($_POST, true));
-        error_log("FILES Data: " . print_r($_FILES, true));
-        error_log("Upload Directory: " . $uploadDir);
-        error_log("Upload Directory exists: " . (is_dir($uploadDir) ? 'YES' : 'NO'));
-        error_log("Upload Directory writable: " . (is_writable($uploadDir) ? 'YES' : 'NO'));
-        
         // ENHANCED AUTHENTICATION VALIDATION
         // Check if username is provided and not null/empty
         $username = $_POST['username'] ?? '';
@@ -159,7 +108,7 @@ function handleCreateReport($conn, string $uploadDir): array {
             ];
         }
 
-        // Validate username format - allow letters, numbers, underscore, and dots
+        // Validate username format (basic example)
         if (!preg_match('/^[a-zA-Z0-9_.]{3,50}$/', $username)) {
             http_response_code(400);
             return [
@@ -170,32 +119,27 @@ function handleCreateReport($conn, string $uploadDir): array {
             ];
         }
 
-        // For local testing, skip database user verification
-        if ($conn && strpos($uploadDir, '/home/vboxuser/') === false) {
-            // VERIFY USER EXISTS IN DATABASE (Only for live server)
-            $userStmt = $conn->prepare("SELECT id, username FROM login WHERE username = ? LIMIT 1");
-            if (!$userStmt) {
-                throw new Exception("Failed to prepare user verification statement: " . $conn->error);
-            }
-            
-            $userStmt->bind_param("s", $username);
-            $userStmt->execute();
-            $userResult = $userStmt->get_result();
-            
-            if ($userResult->num_rows === 0) {
-                http_response_code(401);
-                return [
-                    'success' => false,
-                    'message' => 'Utilizator invalid sau inexistent. Va rugam sa va reconectati.',
-                    'error_code' => 'INVALID_USER',
-                    'details' => ['username' => $username]
-                ];
-            }
-            
-            $userStmt->close();
-        } else {
-            error_log("Local testing mode - skipping database user verification");
+        // VERIFY USER EXISTS IN DATABASE (Additional security)
+        $userStmt = $conn->prepare("SELECT id, username FROM login WHERE username = ? LIMIT 1");
+        if (!$userStmt) {
+            throw new Exception("Failed to prepare user verification statement: " . $conn->error);
         }
+        
+        $userStmt->bind_param("s", $username);
+        $userStmt->execute();
+        $userResult = $userStmt->get_result();
+        
+        if ($userResult->num_rows === 0) {
+            http_response_code(401);
+            return [
+                'success' => false,
+                'message' => 'Utilizator invalid sau inexistent. Va rugam sa va reconectati.',
+                'error_code' => 'INVALID_USER',
+                'details' => ['username' => $username]
+            ];
+        }
+        
+        $userStmt->close();
 
         // Validate other required fields
         $requiredFields = ['title', 'description', 'category', 'location'];
@@ -219,128 +163,59 @@ function handleCreateReport($conn, string $uploadDir): array {
             ];
         }
 
-        // Process file uploads - Enhanced to handle both array and single file formats
+        // Process file uploads
         $imagePaths = [];
-        error_log("=== FILE UPLOAD PROCESSING START ===");
-        error_log("Available _FILES keys: " . print_r(array_keys($_FILES), true));
-        
-        // Check for images sent with different field names (Flutter sometimes sends as separate fields)
-        $imageFields = [];
-        foreach ($_FILES as $key => $value) {
-            if (strpos($key, 'image') !== false) {
-                $imageFields[$key] = $value;
-            }
-        }
-        error_log("Image-related fields found: " . print_r(array_keys($imageFields), true));
-        
-        if (isset($_FILES['images'])) {
-            error_log("_FILES['images'] is set");
-            error_log("_FILES['images'] structure: " . print_r($_FILES['images'], true));
-            
+        if (isset($_FILES['images']) && is_array($_FILES['images']['tmp_name'])) {
             // Create directory if needed
-            if (!is_dir($uploadDir)) {
-                error_log("Upload directory does not exist, creating: " . $uploadDir);
-                if (!mkdir($uploadDir, 0755, true)) {
-                    error_log("FAILED to create upload directory: " . $uploadDir);
-                    throw new Exception("Failed to create upload directory: " . $uploadDir);
-                } else {
-                    error_log("Successfully created upload directory: " . $uploadDir);
-                }
-            } else {
-                error_log("Upload directory already exists: " . $uploadDir);
+            if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
+                throw new Exception("Failed to create upload directory: " . $uploadDir);
             }
-            
-            if (is_array($_FILES['images']['tmp_name'])) {
-                // Handle multiple files with array notation (images[])
-                error_log("_FILES['images']['tmp_name'] is an array with " . count($_FILES['images']['tmp_name']) . " elements");
-                
-                foreach ($_FILES['images']['tmp_name'] as $key => $tmpName) {
-                    error_log("Processing file index $key:");
-                    
-                    // Skip if no file was uploaded
-                    if (empty($tmpName)) {
-                        error_log("  Skipping - empty tmp_name");
-                        continue;
-                    }
 
-                    $imagePaths[] = processUploadedFile(
-                        $tmpName, 
-                        $_FILES['images']['name'][$key], 
-                        $_FILES['images']['error'][$key], 
-                        $uploadDir
+            foreach ($_FILES['images']['tmp_name'] as $key => $tmpName) {
+                // Skip if no file was uploaded
+                if (empty($tmpName)) continue;
+
+                // Error checking
+                if ($_FILES['images']['error'][$key] !== UPLOAD_ERR_OK) {
+                    throw new Exception(
+                        "File upload error: " . 
+                        getUploadErrorMsg($_FILES['images']['error'][$key])
                     );
                 }
-            } else {
-                // Handle single file upload (backward compatibility)
-                error_log("_FILES['images']['tmp_name'] is a single file");
+
+                // MIME type validation
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $mime = $finfo->file($tmpName);
+                $allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
                 
-                if (!empty($_FILES['images']['tmp_name'])) {
-                    $imagePaths[] = processUploadedFile(
-                        $_FILES['images']['tmp_name'], 
-                        $_FILES['images']['name'], 
-                        $_FILES['images']['error'], 
-                        $uploadDir
-                    );
+                if (!in_array($mime, $allowedTypes, true)) {
+                    http_response_code(415);
+                    return [
+                        'success' => false,
+                        'message' => 'Tipul de fisier nu este permis. Folositi doar imagini (JPEG, PNG, GIF).',
+                        'error_code' => 'INVALID_FILE_TYPE',
+                        'details' => [
+                            'file' => $_FILES['images']['name'][$key],
+                            'type' => $mime,
+                            'allowed_types' => $allowedTypes
+                        ]
+                    ];
                 }
-            }
-        } 
-        
-        // ENHANCED: Also check for files sent as separate fields (Flutter multipart issue workaround)
-        foreach ($imageFields as $fieldName => $fileData) {
-            if ($fieldName !== 'images' && !empty($fileData['tmp_name'])) {
-                error_log("Found additional image field: $fieldName");
-                error_log("Field data: " . print_r($fileData, true));
-                
-                // Create directory if needed
-                if (!is_dir($uploadDir)) {
-                    if (!mkdir($uploadDir, 0755, true)) {
-                        throw new Exception("Failed to create upload directory: " . $uploadDir);
-                    }
+
+                // Generate unique filename with username prefix
+                $extension = pathinfo($_FILES['images']['name'][$key], PATHINFO_EXTENSION);
+                $filename = uniqid('img_', true) . '.' . $extension;
+                $targetPath = $uploadDir . $filename;
+
+                if (!move_uploaded_file($tmpName, $targetPath)) {
+                    throw new Exception("Failed to save uploaded file: " . $targetPath);
                 }
-                
-                if (is_array($fileData['tmp_name'])) {
-                    foreach ($fileData['tmp_name'] as $key => $tmpName) {
-                        if (!empty($tmpName)) {
-                            $imagePaths[] = processUploadedFile(
-                                $tmpName, 
-                                $fileData['name'][$key], 
-                                $fileData['error'][$key], 
-                                $uploadDir
-                            );
-                        }
-                    }
-                } else {
-                    $imagePaths[] = processUploadedFile(
-                        $fileData['tmp_name'], 
-                        $fileData['name'], 
-                        $fileData['error'], 
-                        $uploadDir
-                    );
-                }
+
+                $imagePaths[] = $filename;
             }
         }
-        
-        if (empty($_FILES['images']) && empty($imageFields)) {
-            error_log("No images uploaded - no 'images' or image-related fields found");
-        }
-        
-        error_log("Total images processed successfully: " . count($imagePaths));
-        error_log("Image paths: " . print_r($imagePaths, true));
-        error_log("=== FILE UPLOAD PROCESSING END ===");
 
-        // For local testing, skip database operations
-        if (!$conn || strpos($uploadDir, '/home/vboxuser/') !== false) {
-            error_log("Local testing mode - skipping database operations");
-            return [
-                'success' => true,
-                'id' => 'test_' . time(),
-                'username' => $username,
-                'image_paths' => $imagePaths,
-                'message' => 'Raportul a fost creat cu succes! (Test mode)'
-            ];
-        }
-
-        // Prepare and execute database insert (live server only)
+        // Prepare and execute database insert
         $stmt = $conn->prepare("INSERT INTO reports 
                               (title, description, category, location, image_paths, username, created_at) 
                               VALUES (?, ?, ?, ?, ?, ?, NOW())");
@@ -365,7 +240,6 @@ function handleCreateReport($conn, string $uploadDir): array {
 
         // Log successful report creation
         error_log("Report created successfully for user: $username, ID: " . $stmt->insert_id);
-        error_log("=== handleCreateReport DEBUG END ===");
 
         return [
             'success' => true,
@@ -388,100 +262,126 @@ function handleCreateReport($conn, string $uploadDir): array {
     }
 }
 
-function processUploadedFile(string $tmpName, string $fileName, int $error, string $uploadDir): string {
-    error_log("Processing single file: $fileName");
-    error_log("  tmp_name: $tmpName");
-    error_log("  error: $error");
-    error_log("  file size: " . (file_exists($tmpName) ? filesize($tmpName) : 'file not found') . " bytes");
-    
-    // Enhanced error checking with specific messages
-    if ($error !== UPLOAD_ERR_OK) {
-        $errorMsg = getUploadErrorMsg($error);
-        error_log("  Upload error: " . $errorMsg);
+function handleUpdateReport(mysqli $conn, string $uploadDir): array {
+    try {
+        // Get and validate username
+        $username = $_POST['username'] ?? '';
+        $username = trim($username);
         
-        // For client-side errors, throw more specific exceptions
-        if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
-            throw new Exception("File too large: $fileName. Maximum size allowed is " . ini_get('upload_max_filesize'));
-        } elseif ($error === UPLOAD_ERR_PARTIAL) {
-            throw new Exception("File upload was interrupted: $fileName. Please try again.");
-        } elseif ($error === UPLOAD_ERR_NO_FILE) {
-            throw new Exception("No file was uploaded: $fileName");
-        } else {
-            throw new Exception("File upload error: " . $errorMsg);
+        if (empty($username)) {
+            return [
+                'success' => false,
+                'message' => 'User authentication required.',
+                'error_code' => 'USER_NOT_AUTHENTICATED'
+            ];
         }
-    }
 
-    // Check if temp file exists
-    if (!file_exists($tmpName)) {
-        error_log("  ERROR: Temp file does not exist: " . $tmpName);
-        throw new Exception("Temp file does not exist: " . $tmpName);
-    }
-    
-    // Check if file is empty
-    $fileSize = filesize($tmpName);
-    if ($fileSize === 0) {
-        error_log("  ERROR: File is empty: " . $tmpName);
-        throw new Exception("Uploaded file is empty: $fileName");
-    }
-    
-    error_log("  Temp file exists and is readable: " . (is_readable($tmpName) ? 'YES' : 'NO'));
-    error_log("  File size: $fileSize bytes");
+        // Get report ID
+        $reportId = $_POST['report_id'] ?? '';
+        if (empty($reportId)) {
+            return [
+                'success' => false,
+                'message' => 'Report ID is required.',
+                'error_code' => 'MISSING_REPORT_ID'
+            ];
+        }
 
-    // MIME type validation with fallback
-    $mime = null;
-    if (function_exists('finfo_open')) {
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mime = $finfo->file($tmpName);
-    } else {
-        // Fallback to extension-based detection
-        $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-        $mimeMap = [
-            'jpg' => 'image/jpeg',
-            'jpeg' => 'image/jpeg', 
-            'png' => 'image/png',
-            'gif' => 'image/gif'
+        // Check if user can edit this report
+        $userStmt = $conn->prepare("SELECT role FROM login WHERE username = ? LIMIT 1");
+        if (!$userStmt) {
+            throw new Exception("Failed to prepare user statement: " . $conn->error);
+        }
+        
+        $userStmt->bind_param("s", $username);
+        $userStmt->execute();
+        $userResult = $userStmt->get_result();
+        
+        if ($userResult->num_rows === 0) {
+            return [
+                'success' => false,
+                'message' => 'Invalid user.',
+                'error_code' => 'INVALID_USER'
+            ];
+        }
+        
+        $userData = $userResult->fetch_assoc();
+        $userRole = $userData['role'];
+        $userStmt->close();
+
+        // Check if report exists and user has permission to edit it
+        $reportStmt = $conn->prepare("SELECT username FROM reports WHERE id = ? LIMIT 1");
+        if (!$reportStmt) {
+            throw new Exception("Failed to prepare report statement: " . $conn->error);
+        }
+        
+        $reportStmt->bind_param("i", $reportId);
+        $reportStmt->execute();
+        $reportResult = $reportStmt->get_result();
+        
+        if ($reportResult->num_rows === 0) {
+            return [
+                'success' => false,
+                'message' => 'Report not found.',
+                'error_code' => 'REPORT_NOT_FOUND'
+            ];
+        }
+        
+        $reportData = $reportResult->fetch_assoc();
+        $reportOwner = $reportData['username'];
+        $reportStmt->close();
+
+        // Check permissions: admin can edit any report, others can only edit their own
+        if ($userRole !== 'admin' && $reportOwner !== $username) {
+            return [
+                'success' => false,
+                'message' => 'Permission denied to edit this report.',
+                'error_code' => 'PERMISSION_DENIED'
+            ];
+        }
+
+        // Validate required fields
+        $title = $_POST['title'] ?? '';
+        $description = $_POST['description'] ?? '';
+        $category = $_POST['category'] ?? '';
+        $location = $_POST['location'] ?? '';
+
+        if (empty($title) || empty($description) || empty($category) || empty($location)) {
+            return [
+                'success' => false,
+                'message' => 'All required fields must be completed.',
+                'error_code' => 'MISSING_REQUIRED_FIELDS'
+            ];
+        }
+
+        // Update the report (simplified - not handling new images for now)
+        $updateStmt = $conn->prepare("UPDATE reports SET title = ?, description = ?, category = ?, location = ? WHERE id = ?");
+        
+        if (!$updateStmt) {
+            throw new Exception("Failed to prepare update statement: " . $conn->error);
+        }
+
+        $updateStmt->bind_param("ssssi", $title, $description, $category, $location, $reportId);
+        
+        if (!$updateStmt->execute()) {
+            throw new Exception("Failed to update report: " . $updateStmt->error);
+        }
+        
+        $updateStmt->close();
+        
+        return [
+            'success' => true,
+            'message' => 'Report updated successfully.',
+            'report_id' => $reportId
         ];
-        $mime = $mimeMap[$extension] ?? 'unknown';
-    }
-    
-    error_log("  MIME type detected: " . $mime);
-    
-    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    
-    if (!in_array($mime, $allowedTypes, true)) {
-        error_log("  ERROR: Invalid MIME type: " . $mime);
-        throw new Exception("Invalid file type: $fileName. Only JPEG, PNG, GIF allowed. Detected: $mime");
-    }
 
-    // Generate unique filename with proper extension
-    $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    if (!in_array($extension, ['jpg', 'jpeg', 'png', 'gif'])) {
-        $extension = 'jpg'; // Default to jpg if extension is invalid
+    } catch (Exception $e) {
+        error_log("handleUpdateReport Exception: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => 'Error updating report: ' . $e->getMessage(),
+            'error_code' => 'UPDATE_ERROR'
+        ];
     }
-    $filename = uniqid('img_', true) . '.' . $extension;
-    $targetPath = $uploadDir . $filename;
-    
-    error_log("  Generated filename: " . $filename);
-    error_log("  Target path: " . $targetPath);
-    error_log("  Target directory writable: " . (is_writable(dirname($targetPath)) ? 'YES' : 'NO'));
-
-    if (!move_uploaded_file($tmpName, $targetPath)) {
-        error_log("  ERROR: Failed to move uploaded file from " . $tmpName . " to " . $targetPath);
-        error_log("  Source file exists: " . (file_exists($tmpName) ? 'YES' : 'NO'));
-        error_log("  Target directory exists: " . (is_dir(dirname($targetPath)) ? 'YES' : 'NO'));
-        error_log("  Target directory permissions: " . (is_dir(dirname($targetPath)) ? substr(sprintf('%o', fileperms(dirname($targetPath))), -4) : 'N/A'));
-        throw new Exception("Failed to save uploaded file: $fileName");
-    }
-    
-    // Verify the file was actually moved and has content
-    if (!file_exists($targetPath) || filesize($targetPath) === 0) {
-        error_log("  ERROR: File was not properly saved or is empty after move");
-        throw new Exception("File upload verification failed: $fileName");
-    }
-    
-    error_log("  SUCCESS: File moved to " . $targetPath);
-    error_log("  Final file size: " . filesize($targetPath) . " bytes");
-    return $filename;
 }
 
 function getUploadErrorMsg(int $errorCode): string {
@@ -497,4 +397,3 @@ function getUploadErrorMsg(int $errorCode): string {
     
     return $uploadErrors[$errorCode] ?? "Unknown upload error (code $errorCode)";
 }
-?>

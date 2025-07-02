@@ -4,6 +4,7 @@ import 'package:hospital_app/viewmodels/auth_viewmodel.dart';
 import 'package:hospital_app/viewmodels/navigation_viewmodel.dart';
 import 'package:hospital_app/viewmodels/report_viewmodel.dart';
 import 'package:hospital_app/widgets/custom_app_bar.dart';
+import 'package:hospital_app/views/reports/edit_report_view.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -35,6 +36,7 @@ class ReportDetailsView extends StatelessWidget {
     
     final canModifyStatus = technicalRoles.contains(authVM.getRole);
     final canDelete = authVM.getRole == "admin";
+    final canEdit = authVM.getRole == "admin" || authVM.getUsername == report.username;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -64,10 +66,19 @@ class ReportDetailsView extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (canDelete)
+                  if (canEdit || canDelete)
                     const SizedBox(width: 12),
-                  if (canDelete)
-                    _buildDeleteButton(context),
+                  if (canEdit || canDelete)
+                    Row(
+                      children: [
+                        if (canEdit)
+                          _buildEditButton(context),
+                        if (canEdit && canDelete)
+                          const SizedBox(width: 8),
+                        if (canDelete)
+                          _buildDeleteButton(context),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -517,6 +528,51 @@ class ReportDetailsView extends StatelessWidget {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         onPressed: () => _showDeleteConfirmationDialog(context),
+      ),
+    );
+  }
+
+  Widget _buildEditButton(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.primaryBlue.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppTheme.primaryBlue.withOpacity(0.5),
+          width: 1,
+        ),
+      ),
+      child: TextButton.icon(
+        icon: Icon(Icons.edit_outlined, 
+          color: AppTheme.primaryBlue, 
+          size: 20,
+        ),
+        label: Text(
+          'Editează',
+          style: TextStyle(
+            color: AppTheme.primaryBlue,
+            fontSize: 16,
+            fontFamily: 'Roboto',
+          ),
+        ),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EditReportView(report: report),
+            ),
+          );
+          
+          // Refresh the reports list when returning from edit
+          if (result == true && context.mounted) {
+            final reportVM = Provider.of<ReportViewModel>(context, listen: false);
+            await reportVM.fetchReports();
+          }
+        },
       ),
     );
   }

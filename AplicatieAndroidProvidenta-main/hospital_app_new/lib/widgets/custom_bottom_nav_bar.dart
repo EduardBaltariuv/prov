@@ -88,7 +88,11 @@ class CustomBottomNavigationBar extends StatelessWidget {
             activeIcon: Icon(Icons.explore, color: iconColor),
             label: 'Rapoarte',
           ),
-          // Removed Notifications tab
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.add, color: iconColor),
+            activeIcon: Icon(Icons.add_circle, color: iconColor),
+            label: 'Adaugă',
+          ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.account_circle_outlined, color: iconColor),
             activeIcon: Icon(Icons.account_circle, color: iconColor),

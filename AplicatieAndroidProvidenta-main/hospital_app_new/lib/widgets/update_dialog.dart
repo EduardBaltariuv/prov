@@ -104,7 +104,7 @@ class UpdateDialog extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(
-                  value: otaService.downloadProgress / 100,
+                  value: otaService.downloadProgress, // downloadProgress is already 0-1
                   backgroundColor: theme.colorScheme.surfaceVariant,
                   valueColor: AlwaysStoppedAnimation<Color>(
                     theme.colorScheme.primary,
@@ -112,9 +112,72 @@ class UpdateDialog extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${otaService.downloadProgress.toInt()}%',
+                  '${(otaService.downloadProgress * 100).toInt()}%', // Convert to percentage for display
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+              ],
+              // Show error messages if any
+              if (otaService.updateMessage != null && 
+                  (otaService.updateMessage!.contains('failed') ||
+                   otaService.updateMessage!.contains('error'))) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: theme.colorScheme.error,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          otaService.updateMessage!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              // Show success/info messages
+              if (otaService.updateMessage != null && 
+                  !otaService.updateMessage!.contains('failed') &&
+                  !otaService.updateMessage!.contains('error') &&
+                  !otaService.isDownloading) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: theme.colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          otaService.updateMessage!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -161,13 +224,15 @@ class UpdateDialog extends StatelessWidget {
               ),
             if (!otaService.isDownloading)
               ElevatedButton(
-                onPressed: otaService.updateMessage != null
-                    ? () async {
-                        await otaService.downloadAndInstallUpdate();
-                      }
-                    : () async {
-                        await otaService.downloadAndInstallUpdate();
-                      },
+                onPressed: () async {
+                  // If there's an error, reset state before retrying
+                  if (otaService.updateMessage != null && 
+                      (otaService.updateMessage!.contains('failed') ||
+                       otaService.updateMessage!.contains('error'))) {
+                    await otaService.resetDownloadState();
+                  }
+                  await otaService.downloadAndInstallUpdate();
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isCritical ? theme.colorScheme.error : theme.colorScheme.primary,
                   foregroundColor: Colors.white,
@@ -176,7 +241,9 @@ class UpdateDialog extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  otaService.updateMessage != null ? 'Retry' : 'Update Now',
+                  (otaService.updateMessage != null && 
+                   (otaService.updateMessage!.contains('failed') ||
+                    otaService.updateMessage!.contains('error'))) ? 'Retry' : 'Update Now',
                 ),
               ),
           ],

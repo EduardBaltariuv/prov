@@ -7,11 +7,12 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Expose-Headers: *");
 
 // Set timezone for consistent time handling
-date_default_timezone_set('Europe/Bucharest'); // Romania timezone
+date_default_timezone_set('Europe/Bucharest'); // Romanian timezone
 
-// Error reporting
+// Disable HTML error output for clean JSON
+ini_set('display_errors', '0');
+ini_set('html_errors', '0');
 error_reporting(E_ALL);
-ini_set('display_errors', '1');
 
 // Database configuration
 $host = "localhost";
@@ -31,6 +32,9 @@ try {
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     $conn = new mysqli($host, $username, $password, $database, $port);
     $conn->set_charset("utf8mb4");
+    
+    // Set MySQL timezone to Romanian time
+    $conn->query("SET time_zone = '+03:00'"); // Romanian time (UTC+3 in summer)
 
     $action = $_POST['action'] ?? '';
 
@@ -94,12 +98,9 @@ function handleGetReports(mysqli $conn, string $baseUrl, string $uploadPublicPat
 
         unset($row['image_paths']);
         
-        // Enhanced time formatting with timezone info
-        $dateTime = new DateTime($row['created_at']);
-        $dateTime->setTimezone(new DateTimeZone('Europe/Bucharest'));
-        $row['created_at'] = $dateTime->format(DateTime::ATOM);
-        $row['created_at_readable'] = $dateTime->format('d/m/Y H:i');
-        $row['timezone'] = $dateTime->getTimezone()->getName();
+        // Simple time formatting without timezone conversion
+        $row['created_at_readable'] = date('d/m/Y H:i', strtotime($row['created_at']));
+        $row['timezone'] = 'UTC';
 
         $reports[] = $row;
     }
