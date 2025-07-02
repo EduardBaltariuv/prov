@@ -6,9 +6,6 @@ header("Access-Control-Allow-Headers: Authorization, Content-Type");
 header("Access-Control-Allow-Origin: *");
 header('Content-Type: application/json; charset=utf-8');
 
-// Set timezone for consistent time handling
-date_default_timezone_set('Europe/Bucharest'); // Romania timezone
-
 // Disable HTML error output - this is crucial for clean JSON
 ini_set('display_errors', '0');
 ini_set('html_errors', '0');
@@ -33,9 +30,6 @@ try {
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     $conn = new mysqli($host, $username, $password, $database, $port);
     $conn->set_charset("utf8mb4");
-    
-    // Set MySQL timezone to Romanian time
-    $conn->query("SET time_zone = '+03:00'"); // Romanian time (UTC+3 in summer, UTC+2 in winter)
 
     // Get action from POST
     $action = $_POST['action'] ?? '';
@@ -215,9 +209,39 @@ function handleCreateReport(mysqli $conn, string $uploadDir): array {
             }
         }
 
+        // Anti-duplicate protection: Check if a similar report was created recently
+        $duplicateCheck = $conn->prepare(
+            "SELECT id FROM reports 
+             WHERE username = ? AND title = ? AND description = ? AND category = ? AND location = ?
+             AND created_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+             LIMIT 1"
+        );
+        
+        if ($duplicateCheck) {
+            $duplicateCheck->bind_param("sssss", 
+                $username, 
+                $_POST['title'], 
+                $_POST['description'], 
+                $_POST['category'], 
+                $_POST['location']
+            );
+            $duplicateCheck->execute();
+            $duplicateResult = $duplicateCheck->get_result();
+            
+            if ($duplicateResult->num_rows > 0) {
+                $duplicateCheck->close();
+                return [
+                    'success' => false,
+                    'message' => 'Un raport identic a fost creat recent. Va rugam asteptati 30 de secunde inainte de a crea un alt raport similar.',
+                    'error_code' => 'DUPLICATE_REPORT'
+                ];
+            }
+            $duplicateCheck->close();
+        }
+
         // Prepare and execute database insert
         $stmt = $conn->prepare("INSERT INTO reports 
-                              (title, description, category, location, image_paths, username, created_at) 
+                              (title, description, category, location, image_urls, username, created_at) 
                               VALUES (?, ?, ?, ?, ?, ?, NOW())");
         
         if (!$stmt) {

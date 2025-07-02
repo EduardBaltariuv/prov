@@ -19,6 +19,7 @@ class CreateReportView extends StatefulWidget {
 class _CreateReportViewState extends State<CreateReportView> {
   TextEditingController titleController = TextEditingController();
   TextEditingController descriptionController = TextEditingController();
+  bool _isSubmitting = false; // Add this to prevent multiple submissions
 
   @override
   void dispose() {
@@ -202,51 +203,90 @@ class _CreateReportViewState extends State<CreateReportView> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ElevatedButton(
-          onPressed: () async {
-  var submitSuccess = false;
-  final localContext = context;
-  final images = Provider.of<ImagePickerViewModel>(
-    localContext,
-    listen: false,
-  ).images;
-  
-  submitSuccess = await submitReport(
-    titleController.text,
-    descriptionController.text,
-    Provider.of<ReportViewModel>(context, listen: false).selectedCategory ?? 'Altele',
-    Provider.of<ReportViewModel>(context, listen: false).selectedLocation ?? '',
-    images,
-    
-  );
-  
-  if (submitSuccess && localContext.mounted) {
-    // Clear form fields
-    
-    
-    // Reset view models
-    Provider.of<ReportViewModel>(localContext, listen: false).resetSelections();
-    Provider.of<ImagePickerViewModel>(localContext, listen: false).clearImages();
-    titleController.clear();
-    descriptionController.clear();
-    navigationVm.navigateTo(PageKey.reports);
-  }
-},
+          onPressed: _isSubmitting ? null : () async {
+            // Prevent multiple submissions
+            if (_isSubmitting) return;
+            
+            setState(() {
+              _isSubmitting = true;
+            });
+
+            try {
+              var submitSuccess = false;
+              final localContext = context;
+              final images = Provider.of<ImagePickerViewModel>(
+                localContext,
+                listen: false,
+              ).images;
+              
+              submitSuccess = await submitReport(
+                titleController.text,
+                descriptionController.text,
+                Provider.of<ReportViewModel>(context, listen: false).selectedCategory ?? 'Altele',
+                Provider.of<ReportViewModel>(context, listen: false).selectedLocation ?? '',
+                images,
+              );
+              
+              if (submitSuccess && localContext.mounted) {
+                // Clear form fields
+                
+                // Reset view models
+                Provider.of<ReportViewModel>(localContext, listen: false).resetSelections();
+                Provider.of<ImagePickerViewModel>(localContext, listen: false).clearImages();
+                titleController.clear();
+                descriptionController.clear();
+                navigationVm.navigateTo(PageKey.reports);
+              }
+            } finally {
+              // Always reset the submitting state
+              if (mounted) {
+                setState(() {
+                  _isSubmitting = false;
+                });
+              }
+            }
+          },
           
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color.fromARGB(255, 0, 0, 0),
+            backgroundColor: _isSubmitting 
+                ? Colors.grey 
+                : const Color.fromARGB(255, 0, 0, 0),
             padding: const EdgeInsets.symmetric(vertical: 24),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
           ),
-          child: const Text(
-            "Raport nou",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
+          child: _isSubmitting
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      "Se creează raportul...",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                )
+              : const Text(
+                  "Raport nou",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
         ),
       ),
     );
