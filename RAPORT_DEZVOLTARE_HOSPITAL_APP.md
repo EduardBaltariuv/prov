@@ -148,6 +148,12 @@ Adăugate următoarele locații în dropdown:
 - **Reporter/User**: Poate crea rapoarte și edita propriile rapoarte
 - **Viewer**: Poate vizualiza rapoartele
 
+### 5. Protecție Anti-Spam
+- Previne crearea rapoartelor duplicate prin apăsări rapide
+- Loading indicator vizual în timpul procesării
+- Verificare server-side pentru rapoarte identice (30 sec timeout)
+- Dezactivarea automată a butonului până la finalizarea operațiunii
+
 ---
 
 ## DEBUGAREA PROBLEMELOR

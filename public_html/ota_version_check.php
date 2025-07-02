@@ -12,9 +12,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Version information configuration
 $currentVersion = "1.0.0";
-$availableVersion = "1.0.3";
-$isCritical = false;
-$updateNotes = "• Fixed timezone issues - all times now display in Romanian time\n• Removed error messages that appeared incorrectly\n• Fixed reporter visibility - you can now always see your own reports\n• All user roles can now create reports\n• Added new location options\n• Improved performance and stability";
+$availableVersion = "1.0.4";
+$isCritical = false; // Recommended update, not critical
+$updateNotes = "🆕 VERSIUNEA 1.0.4 - ACTUALIZARE DE SECURITATE ȘI STABILITATE\n\n🔒 Protecție îmbunătățită:\n• Protecție anti-spam avansată - previne complet duplicarea rapoartelor\n• Validare sporită a datelor pentru mai multă securitate\n• Indicator vizual de progres la crearea rapoartelor\n\n✅ Funcționalități existente:\n• Editarea rapoartelor - toți utilizatorii își pot edita propriile rapoarte\n• Locații complete în dropdown (Urgențe, Cardiologie, etc.)\n• Toți utilizatorii pot crea rapoarte\n\n🔧 Probleme rezolvate definitiv:\n• Eliminat complet erorile PHP în răspunsurile API\n• Timezone corect - toate timpurile în ora României\n• Vizibilitate completă a rapoartelor proprii\n• Stabilitate sporită și performanță optimizată\n\n⚡ Îmbunătățiri UX:\n• Buton de creare se dezactivează în timpul procesării\n• Interfață îmbunătățită pentru editare\n• Navigare mai fluidă și responsivă";
 $downloadUrl = "https://darkcyan-clam-483701.hostingersite.com/ota_download.php";
 $minSupportedVersion = "1.0.0";
 

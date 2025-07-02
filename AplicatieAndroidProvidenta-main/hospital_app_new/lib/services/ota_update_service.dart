@@ -252,23 +252,31 @@ class OTAUpdateService extends ChangeNotifier {
     if (!Platform.isAndroid) return;
     
     try {
+      debugPrint('OTA: Starting APK installation for: $filePath');
+      
       // Verify the APK file exists and has content
       final apkFile = File(filePath);
       if (!await apkFile.exists()) {
-        _updateMessage = 'Installation failed: APK file not found';
+        _updateMessage = 'Installation failed: APK file not found at $filePath';
+        debugPrint('OTA: APK file does not exist at $filePath');
         notifyListeners();
         return;
       }
       
       final fileSize = await apkFile.length();
+      debugPrint('OTA: APK file size: $fileSize bytes');
+      
       if (fileSize == 0) {
         _updateMessage = 'Installation failed: APK file is empty';
+        debugPrint('OTA: APK file is empty');
         notifyListeners();
         return;
       }
       
       // Check if the app can install from unknown sources
+      debugPrint('OTA: Checking install permissions...');
       final canInstall = await _platform.invokeMethod('canInstallFromUnknownSources');
+      debugPrint('OTA: Can install from unknown sources: $canInstall');
       
       if (!canInstall) {
         _updateMessage = 'Installation requires permission. Opening settings...';
@@ -284,23 +292,44 @@ class OTAUpdateService extends ChangeNotifier {
       }
       
       // Attempt to install the APK
-      await _platform.invokeMethod('installApk', {'apkPath': filePath});
-      _updateMessage = 'Opening installer... Follow the prompts to complete the update.';
+      debugPrint('OTA: Attempting to install APK...');
+      _updateMessage = 'Starting installation...';
+      notifyListeners();
+      
+      final result = await _platform.invokeMethod('installApk', {'apkPath': filePath});
+      debugPrint('OTA: Install method result: $result');
+      
+      if (result == true) {
+        _updateMessage = 'Installation started! Please follow the on-screen prompts to complete the update.';
+        debugPrint('OTA: Installation intent launched successfully');
+      } else {
+        _updateMessage = 'Installation failed to start. Please try again.';
+        debugPrint('OTA: Installation intent failed to launch');
+      }
       
       // Schedule cleanup after installation attempt
       _scheduleCleanup(filePath);
       
     } catch (e) {
-      debugPrint('Error installing APK: $e');
+      debugPrint('OTA: Error installing APK: $e');
       
-      // Provide user-friendly error messages
-      if (e.toString().contains('INSTALL_ERROR')) {
-        _updateMessage = 'Installation failed. Please ensure you have enabled "Install from Unknown Sources" in your device settings.';
+      // Provide user-friendly error messages based on error type
+      String errorMessage;
+      if (e.toString().contains('PERMISSION_DENIED')) {
+        errorMessage = 'Installation blocked. Please enable "Install from Unknown Sources" in Settings.';
       } else if (e.toString().contains('FILE_NOT_FOUND')) {
-        _updateMessage = 'Installation failed: Update file not found. Please try downloading again.';
+        errorMessage = 'Installation failed: Update file not found. Please try downloading again.';
+      } else if (e.toString().contains('FILE_EMPTY')) {
+        errorMessage = 'Installation failed: Downloaded file is corrupted. Please try again.';
+      } else if (e.toString().contains('FILEPROVIDER_ERROR')) {
+        errorMessage = 'Installation failed: File access error. Please restart the app and try again.';
+      } else if (e.toString().contains('INSTALL_ERROR')) {
+        errorMessage = 'Installation failed. Please ensure you have enabled "Install from Unknown Sources" in your device settings.';
       } else {
-        _updateMessage = 'Installation failed. Please try again or install manually.';
+        errorMessage = 'Installation failed: ${e.toString()}. Please try again or install manually.';
       }
+      
+      _updateMessage = errorMessage;
     }
     notifyListeners();
   }

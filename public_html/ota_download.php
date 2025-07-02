@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Configuration
 $apkDirectory = __DIR__ . '/apk_files/';
-$allowedVersions = ['1.0.1', '1.0.2', '1.0.3']; // Add allowed versions here
+$allowedVersions = ['1.0.1', '1.0.2', '1.0.3', '1.0.4']; // Add allowed versions here
 
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
