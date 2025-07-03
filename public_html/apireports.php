@@ -25,19 +25,34 @@ $port = 3306;
 $uploadBaseDir = '/home/u842828699/domains/darkcyan-clam-483701.hostingersite.com/public_html/';
 $uploadDir = $uploadBaseDir . 'uploads/';
 
+// Custom logging function to write to api_debug.log
+function debug_log($message) {
+    $logFile = __DIR__ . '/api_debug.log';
+    $timestamp = date('Y-m-d H:i:s');
+    file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND | LOCK_EX);
+}
+
 try {
+    // DEBUG: Log all request data
+    debug_log("DEBUG: REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD']);
+    debug_log("DEBUG: POST data: " . print_r($_POST, true));
+    debug_log("DEBUG: FILES data: " . print_r($_FILES, true));
+    
     // Database connection
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     $conn = new mysqli($host, $username, $password, $database, $port);
     $conn->set_charset("utf8mb4");
+    debug_log("DEBUG: Database connection successful");
 
     // Get action from POST
     $action = $_POST['action'] ?? '';
-    error_log("Action received: $action");
+    debug_log("Action received: $action");
 
     switch ($action) {
         case 'createReport':
+            debug_log("DEBUG: About to call handleCreateReport");
             $response = handleCreateReport($conn, $uploadDir);
+            debug_log("DEBUG: handleCreateReport completed successfully");
             // Clean any unexpected output before sending JSON
             ob_end_clean();
             echo json_encode($response);
@@ -59,8 +74,10 @@ try {
     }
 
 } catch (Throwable $e) {
-    error_log("Caught exception: " . $e->getMessage());
-    error_log("Stack trace: " . $e->getTraceAsString());
+    debug_log("DEBUG: Exception caught in main try block");
+    debug_log("Caught exception: " . $e->getMessage());
+    debug_log("Stack trace: " . $e->getTraceAsString());
+    debug_log("Exception file: " . $e->getFile() . " line: " . $e->getLine());
     
     // Clean any unexpected output before sending JSON
     ob_end_clean();
@@ -84,6 +101,10 @@ try {
 
 function handleCreateReport(mysqli $conn, string $uploadDir): array {
     try {
+        // DEBUG: Log POST and FILES data
+        debug_log('DEBUG handleCreateReport POST: ' . print_r($_POST, true));
+        debug_log('DEBUG handleCreateReport FILES: ' . print_r($_FILES, true));
+        debug_log('DEBUG handleCreateReport uploadDir: ' . $uploadDir . ' perms: ' . (is_dir($uploadDir) ? substr(sprintf('%o', fileperms($uploadDir)), -4) : 'not_exists'));
         // ENHANCED AUTHENTICATION VALIDATION
         // Check if username is provided and not null/empty
         $username = $_POST['username'] ?? '';
@@ -241,7 +262,7 @@ function handleCreateReport(mysqli $conn, string $uploadDir): array {
 
         // Prepare and execute database insert
         $stmt = $conn->prepare("INSERT INTO reports 
-                              (title, description, category, location, image_urls, username, created_at) 
+                              (title, description, category, location, image_paths, username, created_at) 
                               VALUES (?, ?, ?, ?, ?, ?, NOW())");
         
         if (!$stmt) {
@@ -263,7 +284,7 @@ function handleCreateReport(mysqli $conn, string $uploadDir): array {
         }
 
         // Log successful report creation
-        error_log("Report created successfully for user: $username, ID: " . $stmt->insert_id);
+        debug_log("Report created successfully for user: $username, ID: " . $stmt->insert_id);
 
         return [
             'success' => true,
@@ -281,7 +302,7 @@ function handleCreateReport(mysqli $conn, string $uploadDir): array {
             }
         }
         
-        error_log("Error in handleCreateReport: " . $e->getMessage());
+        debug_log("Error in handleCreateReport: " . $e->getMessage());
         throw $e;
     }
 }
@@ -399,7 +420,7 @@ function handleUpdateReport(mysqli $conn, string $uploadDir): array {
         ];
 
     } catch (Exception $e) {
-        error_log("handleUpdateReport Exception: " . $e->getMessage());
+        debug_log("handleUpdateReport Exception: " . $e->getMessage());
         return [
             'success' => false,
             'message' => 'Error updating report: ' . $e->getMessage(),
